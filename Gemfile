@@ -1,0 +1,5 @@
+source "https://rubygems.org"
+gem "patron"
+gem "mime-types"
+gem "charlock_holmes"
+gem "multiparty", git: "https://github.com/dv/multiparty"

@@ -1,12 +1,16 @@
-#!/usr/bin/ruby
-require 'rubygems'
+#!/usr/bin/env ruby
+# coding: UTF-8
+
+require 'bundler/setup'
 require 'patron'
 require 'digest/md5'
 require 'zlib'
 require 'stringio'
 require 'pp'
+require 'charlock_holmes/string'
+require 'multiparty'
 
-require "#{File.dirname(__FILE__)}/multipart"
+# $DEBUG = true
 
 class SVPlayerTool
   
@@ -17,23 +21,24 @@ class SVPlayerTool
   end
 
   def fetch
-    data, headers = Multipart::Post.prepare_query(build_query_fields_hash)
-  
+    multiparty = Multiparty.new
+    multiparty << build_query_fields_hash
+
     sess = Patron::Session.new
     sess.connect_timeout = 10000 # milliseconds
     sess.timeout = 120 # seconds
     # sess.insecure = true # don't validate SSL
 
     sess.base_url = "http://svplayer.shooter.cn"
-    sess.headers.merge!(headers) 
-  
+    
+    sess.headers['Content-Type'] = multiparty.header_value
     sess.headers['User-Agent'] = 'SPlayer Build' # 'SPlayer Build 959'
     sess.headers['Accept'] = '*/*'
     
     pp sess.headers if $DEBUG
-    pp data if $DEBUG
+    pp multiparty.body if $DEBUG
 
-    resp = sess.post("/api/subapi.php", data)
+    resp = sess.post("/api/subapi.php", multiparty.body)
 
     puts resp.status if $DEBUG
     puts resp.body.length if $DEBUG
@@ -71,13 +76,12 @@ class SVPlayerTool
   end
 
   def build_query_fields_hash
-    fields_hash = {}
-    fields_hash['pathinfo'] = @video_filename
-    fields_hash['filehash'] = calc_file_hash.join(';')
-    #fields_hash['vhash'] = 'ae44f1c3be6004153ac3f74ae42cd91f'
-    fields_hash['shortname'] = ''
-  
-    fields_hash
+    {
+      'pathinfo' => @video_filename,
+      'filehash' => calc_file_hash.join(';'),
+      #'vhash' => 'ae44f1c3be6004153ac3f74ae42cd91f',
+      'shortname' => ''
+    }
   end
 
   def extract_subtitle_data(f, file_name) 
@@ -103,8 +107,32 @@ class SVPlayerTool
       gz = Zlib::GzipReader.new(StringIO.new(file_gz_data))
       sub_file = gz.read    
     rescue Zlib::GzipFile::Error => e
+      # not gz compressed
       sub_file = file_gz_data
     end
+
+    begin
+      sub_file.detect_encoding! 
+
+      unless sub_file.encoding.to_s == 'UTF-8'
+        sub_file = CharlockHolmes::Converter.convert sub_file, sub_file.encoding.to_s, 'UTF-8'
+      end
+    rescue
+      puts "Failed to detect encoding"
+      return
+    end
+
+=begin
+    require 'iconv' unless String.method_defined?(:encode)
+    if String.method_defined?(:encode)
+        sub_file.encode!('UTF-8', 'UTF-8', :invalid => :replace)
+    else
+        ic = Iconv.new('UTF-8', 'UTF-8//IGNORE')
+        sub_file = ic.iconv(file_contents)
+    end
+=end
+
+    raise Exception.new if sub_file =~ /splayer\.org/
 
     File.open("#{file_name}.#{ext_name}", "w") do |fout|
       fout.write(sub_file)
@@ -135,32 +163,57 @@ class SVPlayerTool
           puts "file_data_length = #{file_data_length}, file_count = #{file_count}" if $DEBUG
 
           (1..file_count).each do
-            extract_subtitle_data(f, "#{@video_basename}.#{i}")
-          end 
+            extract_subtitle_data f, (i == 1) ? @video_basename : "#{@video_basename}.#{i}"
+          end
         end 
       end
-    
     end
   end
-
 
 end
 
 
 if $0 == __FILE__
-  if ARGV.length != 1
+
+  def no_subtitle_file_found_for(video_file)
+    srt_file_ext_names = %w{ .srt .ass }
+
+    escaped_path = video_file.chomp(File.extname(video_file)).gsub(/([\[\]\{\}\*\?\\])/, '\\\\\1')
+
+    # matching with 'abc.srt', 'abc.chn.srt' etc
+    Dir["#{escaped_path}*{#{srt_file_ext_names.join(',')}}"].length == 0
+  end
+
+  if ARGV.length == 0
     puts "Usage: #{$0} <video_file>"
-
   else
-    video_file = ARGV[0]
-    video_file_ext_name = File.extname(video_file)
-
     valid_video_ext_names = %w{.avi .mkv .ts .mp4}
-    if valid_video_ext_names.include?(video_file_ext_name)
-      svp = SVPlayerTool.new(video_file)
-      svp.fetch
-    else
-      puts "Skip with ext name: '#{video_file_ext_name}'"
+
+    ARGV.each do |video_file|
+      if valid_video_ext_names.include?(File.extname(video_file)) &&
+        no_subtitle_file_found_for(video_file)
+        
+        puts "Search for #{File.basename(video_file)}:"
+        
+        svp = SVPlayerTool.new(video_file)
+
+        retry_times = 0
+        begin
+          svp.fetch
+        rescue => e
+          retry_times += 1
+          
+          if retry_times > 3
+            raise
+          else
+            puts "Fake subtitle found... retry no.#{retry_times}"
+            sleep 5
+            retry
+          end
+        end
+      else
+        puts "Skip #{video_file}..."
+      end
     end
   end
 end

@@ -1,0 +1,22 @@
+GIT
+  remote: https://github.com/dv/multiparty
+  revision: 1f70d78594faa67c9c15975cf3189a7460e044b2
+  specs:
+    multiparty (0.2.0)
+      mime-types
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    charlock_holmes (0.6.9)
+    mime-types (1.19)
+    patron (0.4.18)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  charlock_holmes
+  mime-types
+  multiparty!
+  patron

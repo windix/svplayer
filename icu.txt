@@ -1,0 +1,9 @@
+MAC:
+
+brew install icu4c
+
+gem install charlock_holmes
+
+LINUX:
+
+gem install charlock_holmes -- --with-icu-dir=/usr/share/icu/4.8.1.1

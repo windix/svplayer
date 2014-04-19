@@ -1,4 +1,4 @@
-require 'svplayer_tool.rb'
+require './svplayer_tool.rb'
 
 $DEBUG = true
 
