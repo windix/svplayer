@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
-# coding: UTF-8
+
+$:.unshift "#{__dir__}/lib"
 
 require 'bundler/setup'
 require 'patron'
@@ -112,25 +113,16 @@ class SVPlayerTool
     end
 
     begin
-      sub_file.detect_encoding! 
+      detection = sub_file.detect_encoding
 
-      unless sub_file.encoding.to_s == 'UTF-8'
-        sub_file = CharlockHolmes::Converter.convert sub_file, sub_file.encoding.to_s, 'UTF-8'
+      unless detection[:encoding] == 'UTF-8'
+        sub_file = CharlockHolmes::Converter.convert sub_file, detection[:encoding], 'UTF-8'
       end
-    rescue
+    rescue => e
       puts "Failed to detect encoding"
+      p e
       return
     end
-
-=begin
-    require 'iconv' unless String.method_defined?(:encode)
-    if String.method_defined?(:encode)
-        sub_file.encode!('UTF-8', 'UTF-8', :invalid => :replace)
-    else
-        ic = Iconv.new('UTF-8', 'UTF-8//IGNORE')
-        sub_file = ic.iconv(file_contents)
-    end
-=end
 
     raise Exception.new if sub_file =~ /splayer\.org/
 
